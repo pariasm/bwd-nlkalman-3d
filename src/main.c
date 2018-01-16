@@ -464,8 +464,10 @@ float * window_function(const char * type, int NN)
 // struct for storing the parameters of the algorithm
 struct vnlmeans_params
 {
-	int patch_sz;        // patch size
-	int search_sz;       // search window radius
+	int patch_sz_x;      // spatial  patch size
+	int patch_sz_t;      // temporal patch size
+	int search_sz_x;     // spatial  search window radius
+	int search_sz_t;     // temporal search window radius
 	float dista_th;      // patch distance threshold
 	float dista_lambda;  // weight of current frame in patch distance
 	float beta_x;        // noise multiplier in spatial filtering
@@ -501,15 +503,19 @@ void vnlmeans_default_params(struct vnlmeans_params * p, float sigma)
 	 * might lead to a global decrease in psnr */
 #define DERFHD_PARAMS
 #ifdef DERFHD_PARAMS
-	if (p->patch_sz     < 0) p->patch_sz     = 8;  // not tuned
-	if (p->search_sz    < 0) p->search_sz    = 10; // not tuned
+	if (p->patch_sz_x   < 0) p->patch_sz_x   = 8;  // not tuned
+	if (p->patch_sz_t   < 0) p->patch_sz_t   = 1;  // not tuned
+	if (p->search_sz_x  < 0) p->search_sz_x  = 10; // not tuned
+	if (p->search_sz_t  < 0) p->search_sz_t  = 1;  // not tuned
 	if (p->dista_th     < 0) p->dista_th     = .5*sigma + 15.0;
 	if (p->dista_lambda < 0) p->dista_lambda = 1.0;
 	if (p->beta_x       < 0) p->beta_x       = 3.0;
 	if (p->beta_t       < 0) p->beta_t       = 0.05*sigma + 6.0;
 #else // DERFCIF_PARAMS
-	if (p->patch_sz     < 0) p->patch_sz     = 8;  // not tuned
-	if (p->search_sz    < 0) p->search_sz    = 10; // not tuned
+	if (p->patch_sz_x   < 0) p->patch_sz_x   = 8;  // not tuned
+	if (p->patch_sz_t   < 0) p->patch_sz_t   = 1;  // not tuned
+	if (p->search_sz_x  < 0) p->search_sz_x  = 10; // not tuned
+	if (p->search_sz_t  < 0) p->search_sz_t  = 1;  // not tuned
 	if (p->dista_th     < 0) p->dista_th     = (60. - 38.)*(sigma - 10.) + 38.0;
 	if (p->dista_lambda < 0) p->dista_lambda = 1.0;
 	if (p->beta_x       < 0) p->beta_x       = 2.4;
@@ -524,7 +530,7 @@ void vnlmeans_frame(float *deno1, float *nisy1, float *deno0,
 {
 	// definitions [[[2
 
-	const int psz = prms.patch_sz;
+	const int psz = prms.patch_sz_x;
 	const int step = prms.pixelwise ? 1 : psz/2;
 //	const int step = prms.pixelwise ? 1 : psz;
 	const float sigma2 = sigma * sigma;
@@ -612,7 +618,7 @@ void vnlmeans_frame(float *deno1, float *nisy1, float *deno0,
 		int np1 = 0; // number of similar patches with no valid previous patch
 		if (dista_th2)
 		{
-			const int wsz = prms.search_sz;
+			const int wsz = prms.search_sz_x;
 			const int wx[2] = {max(px - wsz, 0), min(px + wsz, w - psz) + 1};
 			const int wy[2] = {max(py - wsz, 0), min(py + wsz, h - psz) + 1};
 			for (int qy = wy[0]; qy < wy[1]; ++qy)
@@ -896,8 +902,10 @@ int main(int argc, const char *argv[])
 	float sigma = 0.f;
 	bool verbose = false;
 	struct vnlmeans_params prms;
-	prms.patch_sz     = -1; // -1 means automatic value
-	prms.search_sz    = -1;
+	prms.patch_sz_x   = -1; // -1 means automatic value
+	prms.patch_sz_t   = -1;
+	prms.search_sz_x  = -1;
+	prms.search_sz_t  = -1;
 	prms.dista_th     = -1.;
 	prms.beta_x       = -1.;
 	prms.beta_t       = -1.;
@@ -908,20 +916,22 @@ int main(int argc, const char *argv[])
 	struct argparse_option options[] = {
 		OPT_HELP(),
 		OPT_GROUP("Algorithm options"),
-		OPT_STRING ('i', "nisy"  , &nisy_path, "noisy input path (printf format)"),
-		OPT_STRING ('o', "flow"  , &flow_path, "backward flow path (printf format)"),
-		OPT_STRING ('k', "occl"  , &occl_path, "flow occlusions mask (printf format)"),
-		OPT_STRING ('d', "deno"  , &deno_path, "denoised output path (printf format)"),
-		OPT_INTEGER('f', "first" , &fframe, "first frame"),
-		OPT_INTEGER('l', "last"  , &lframe , "last frame"),
-		OPT_FLOAT  ('s', "sigma" , &sigma, "noise standard dev"),
-		OPT_INTEGER('p', "patch" , &prms.patch_sz, "patch size"),
-		OPT_INTEGER('w', "search", &prms.search_sz, "search region radius"),
-		OPT_FLOAT  ( 0 , "dth"   , &prms.dista_th, "patch distance threshold"),
-		OPT_FLOAT  ( 0 , "beta_x", &prms.beta_x, "noise multiplier in spatial filtering"),
-		OPT_FLOAT  ( 0 , "beta_t", &prms.beta_t, "noise multiplier in kalman filtering"),
-		OPT_FLOAT  ( 0 , "lambda", &prms.dista_lambda, "noisy patch weight in patch distance"),
-		OPT_BOOLEAN( 0 , "pixel" , &prms.pixelwise, "toggle pixel-wise denoising"),
+		OPT_STRING ('i', "nisy"    , &nisy_path, "noisy input path (printf format)"),
+		OPT_STRING ('o', "flow"    , &flow_path, "backward flow path (printf format)"),
+		OPT_STRING ('k', "occl"    , &occl_path, "flow occlusions mask (printf format)"),
+		OPT_STRING ('d', "deno"    , &deno_path, "denoised output path (printf format)"),
+		OPT_INTEGER('f', "first"   , &fframe, "first frame"),
+		OPT_INTEGER('l', "last"    , &lframe , "last frame"),
+		OPT_FLOAT  ('s', "sigma"   , &sigma, "noise standard dev"),
+		OPT_INTEGER('p', "patch_x" , &prms.patch_sz_x, "spatial  patch size"),
+		OPT_INTEGER( 0 , "patch_t" , &prms.patch_sz_t, "temporal patch size"),
+		OPT_INTEGER('w', "search_x", &prms.search_sz_x, "spatial  search region radius"),
+		OPT_INTEGER( 0 , "search_t", &prms.search_sz_t, "temporal search region radius"),
+		OPT_FLOAT  ( 0 , "dth"     , &prms.dista_th, "patch distance threshold"),
+		OPT_FLOAT  ( 0 , "beta_x"  , &prms.beta_x, "noise multiplier in spatial filtering"),
+		OPT_FLOAT  ( 0 , "beta_t"  , &prms.beta_t, "noise multiplier in kalman filtering"),
+		OPT_FLOAT  ( 0 , "lambda"  , &prms.dista_lambda, "noisy patch weight in patch distance"),
+		OPT_BOOLEAN( 0 , "pixel"   , &prms.pixelwise, "toggle pixel-wise denoising"),
 		OPT_GROUP("Program options"),
 		OPT_BOOLEAN('v', "verbose", &verbose, "verbose output"),
 		OPT_END(),
@@ -942,8 +952,10 @@ int main(int argc, const char *argv[])
 		printf("parameters:\n");
 		printf("\tnoise  %f\n", sigma);
 		printf("\t%s-wise mode\n", prms.pixelwise ? "pixel" : "patch");
-		printf("\tpatch     %d\n", prms.patch_sz);
-		printf("\tsearch    %d\n", prms.search_sz);
+		printf("\tpatch_x   %d\n", prms.patch_sz_x);
+		printf("\tpatch_t   %d\n", prms.patch_sz_t);
+		printf("\tsearch_x  %d\n", prms.search_sz_x);
+		printf("\tsearch_t  %d\n", prms.search_sz_t);
 		printf("\tdth       %g\n", prms.dista_th);
 		printf("\tlambda    %g\n", prms.dista_lambda);
 		printf("\tbeta_x    %g\n", prms.beta_x);
