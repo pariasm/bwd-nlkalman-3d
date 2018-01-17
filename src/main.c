@@ -524,7 +524,7 @@ void vnlmeans_default_params(struct vnlmeans_params * p, float sigma)
 }
 
 // denoise frame t
-void vnlmeans_frame(float *deno1, float *nisy1, float *deno0,
+void vnlmeans_frame(float *deno1, float *nisy1, float *deno0, float *flow1,
 		int w, int h, int ch, float sigma,
 		const struct vnlmeans_params prms, int frame)
 {
@@ -1028,9 +1028,13 @@ int main(int argc, const char *argv[])
 
 	// run denoiser [[[2
 	const int whc = w*h*c, wh2 = w*h*2;
+	const int search_t = prms.search_sz_t;
+	const int patch_t  = prms.patch_sz_t;
+	const int buffsz_t = search_t + patch_t - 1;
+
 	float * deno = nisy;
-	float * warp0 = malloc(whc*sizeof(float));
-	float * deno1 = malloc(whc*sizeof(float));
+	float * warp0 = malloc(whc * buffsz_t * sizeof(float));
+	float * deno1 = malloc(whc * patch_t * sizeof(float));
 #ifdef VARIANCES
 	float * vari0 = malloc(w*h*sizeof(float));
 	float * vari1 = malloc(w*h*sizeof(float));
@@ -1042,10 +1046,10 @@ int main(int argc, const char *argv[])
 		// TODO compute optical flow if absent
 
 		// warp previous denoised frame
-		if (f > fframe)
+		if (f > fframe + buffsz_t)
 		{
-			float * deno0 = deno + (f - 1 - fframe)*whc;
-			if (flow)
+			float * deno0 = deno + (f - buffsz_t - fframe)*whc;
+			if (flow && (search_t == 1) && (patch_t == 1))
 			{
 				float * flow0 = flow + (f - fframe)*wh2;
 				float * occl1 = occl ? occl + (f - fframe)*w*h : NULL;
@@ -1056,14 +1060,18 @@ int main(int argc, const char *argv[])
 			}
 			else
 				// copy without warping
-				memcpy(warp0, deno0, whc*sizeof(float));
+				memcpy(warp0, deno0, whc * buffsz_t * sizeof(float));
 		}
 
 		// run denoising
 		float *nisy1 = nisy + (f - fframe)*whc;
-		float *deno0 = (f > fframe) ? warp0 : NULL;
-		vnlmeans_frame(deno1, nisy1, deno0, w, h, c, sigma, prms, f);
-		memcpy(nisy1, deno1, whc*sizeof(float));
+		float *flow1 = flow + (f - fframe)*wh2;
+		float *deno0 = (f > fframe + buffsz_t) ? warp0 + (buffsz_t - 1)*whc : NULL;
+		float *deno11 = deno1 + (patch_t - 1)*whc; // point to last frame of deno1
+		vnlmeans_frame(deno11, nisy1, deno0, flow1, w, h, c, sigma, prms, f);
+
+		// copy denoised frame f to video
+		memcpy(nisy1, deno11, whc*sizeof(float));
 	}
 
 	// save output [[[2
