@@ -88,85 +88,6 @@ void vio_save_video_float_vec(const char * const path, float * vid,
 }
 
 
-// bicubic interpolation [[[1
-
-#ifdef NAN
-// extrapolate by nan
-inline static
-float getsample_nan(float *x, int w, int h, int pd, int i, int j, int l)
-{
-	assert(l >= 0 && l < pd);
-	return (i < 0 || i >= w || j < 0 || j >= h) ? NAN : x[(i + j*w)*pd + l];
-}
-#endif//NAN
-
-inline static
-float cubic_interpolation(float v[4], float x)
-{
-	return v[1] + 0.5 * x*(v[2] - v[0]
-			+ x*(2.0*v[0] - 5.0*v[1] + 4.0*v[2] - v[3]
-			+ x*(3.0*(v[1] - v[2]) + v[3] - v[0])));
-}
-
-static
-float bicubic_interpolation_cell(float p[4][4], float x, float y)
-{
-	float v[4];
-	v[0] = cubic_interpolation(p[0], y);
-	v[1] = cubic_interpolation(p[1], y);
-	v[2] = cubic_interpolation(p[2], y);
-	v[3] = cubic_interpolation(p[3], y);
-	return cubic_interpolation(v, x);
-}
-
-static
-void bicubic_interpolation_nans(float *result,
-		float *img, int w, int h, int pd, float x, float y)
-{
-	x -= 1;
-	y -= 1;
-
-	int ix = floor(x);
-	int iy = floor(y);
-	for (int l = 0; l < pd; l++) {
-		float c[4][4];
-		for (int j = 0; j < 4; j++)
-		for (int i = 0; i < 4; i++)
-			c[i][j] = getsample_nan(img, w, h, pd, ix + i, iy + j, l);
-		float r = bicubic_interpolation_cell(c, x - ix, y - iy);
-		result[l] = r;
-	}
-}
-
-static
-void warp_bicubic_inplace(float *imw, float *im, float *of, float *msk,
-		int w, int h, int ch)
-{
-	// warp previous frame
-	for (int y = 0; y < h; ++y)
-	for (int x = 0; x < w; ++x)
-	if (!msk || (msk &&  msk[x + y*w] == 0))
-	{
-		float xw = x + of[(x + y*w)*2 + 0];
-		float yw = y + of[(x + y*w)*2 + 1];
-		bicubic_interpolation_nans(imw + (x + y*w)*ch, im, w, h, ch, xw, yw);
-	}
-	else
-		for (int c = 0; c < ch; ++c)
-			imw[(x + y*w)*ch + c] = NAN;
-
-	return;
-}
-
-/* static
-float * warp_bicubic(float * im, float * of, int w, int h, int ch)
-{
-	// warp previous frame
-	float * im_w = malloc(w*h*ch * sizeof(float));
-	warp_bicubic_inplace(im_w, im, of, w, h, ch);
-	return im_w;
-} */
-
 // dct handler [[[1
 
 // dct implementation: using fftw or as a matrix product
@@ -635,7 +556,6 @@ void vnlmeans_frame(float *deno1, float *nisy1, float *flow1,
 				{
 					// compute patch distance [[[4
 					float ww = 0; // patch distance is saved here
-					const float l = prms.dista_lambda;
 					for (int ht = 0; ht < psz_t; ++ht)
 					for (int hy = 0; hy < psz; ++hy)
 					for (int hx = 0; hx < psz; ++hx)
@@ -949,12 +869,9 @@ int main(int argc, const char *argv[])
 
 	// run denoiser [[[2
 	const int whc = w*h*c, wh2 = w*h*2;
-	const int search_t = prms.search_sz_t;
 	const int patch_t  = prms.patch_sz_t;
-	const int buffsz_t = search_t + patch_t - 1;
 
-	float * deno = nisy;
-	float * deno1 = malloc(whc * patch_t * sizeof(float));
+	float * deno = malloc(whc * patch_t * sizeof(float));
 	for (int f = fframe; f <= lframe; ++f)
 	{
 		if (verbose) printf("processing frame %d\n", f);
@@ -962,18 +879,18 @@ int main(int argc, const char *argv[])
 		// run denoising
 		float *nisy1 = nisy + (f - fframe)*whc;
 		float *flow1 = flow + (f - fframe)*wh2;
-		float *deno11 = deno1 + (patch_t - 1)*whc; // point to last frame of deno1
+		float *deno1 = deno + (patch_t - 1)*whc; // point to last frame of deno1
 
-		vnlmeans_frame(deno11, nisy1, flow1, w, h, c, sigma, prms, f-fframe);
+		vnlmeans_frame(deno1, nisy1, flow1, w, h, c, sigma, prms, f-fframe);
 
-		// copy denoised frame f to video (instead we should aggregate)
-		memcpy(nisy1, deno11, whc*sizeof(float));
+		// copy denoised frame f to video
+		memcpy(nisy1, deno1, whc*sizeof(float));
 	}
 
 	// save output [[[2
-	vio_save_video_float_vec(deno_path, deno, fframe, lframe, w, h, c);
+	vio_save_video_float_vec(deno_path, nisy, fframe, lframe, w, h, c);
 
-	if (deno1) free(deno1);
+	if (deno) free(deno);
 	if (nisy) free(nisy);
 	if (flow) free(flow);
 	if (occl) free(occl);
