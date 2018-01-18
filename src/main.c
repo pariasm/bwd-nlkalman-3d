@@ -512,11 +512,12 @@ void vnlmeans_frame(float *deno1, float *nisy1, float *flow1,
 #endif
 
 	// loop on image patches [[[2
+	const int parallel_step = step * (psz/step);
 	for (int oy = 0; oy < psz; oy += step) // split in grids of non-overlapping
 	for (int ox = 0; ox < psz; ox += step) // patches (for parallelization)
 	#pragma omp parallel for private(Q,P,M1,V1)
-	for (int py = oy; py < h - psz + 1; py += psz) // FIXME: boundary pixels
-	for (int px = ox; px < w - psz + 1; px += psz) // may not be denoised
+	for (int py = oy; py < h - psz + 1; py += parallel_step) // FIXME: boundaries
+	for (int px = ox; px < w - psz + 1; px += parallel_step) // may be skipped
 	{
 		//	load target patch [[[3
 		for (int ht = 0; ht < psz_t; ++ht)
