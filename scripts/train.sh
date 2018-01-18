@@ -5,8 +5,10 @@
 sigmas=(10 20 40 30)
 
 # fixed parameters
-pszs=(4 8 12)
-wszs=(5 10 15)
+pxs=(8 6)
+pts=(1 2)
+wxs=(3 4 5 6)
+wts=(4 3 2 1)
 
 # number of trials
 ntrials=1000
@@ -19,11 +21,6 @@ derf-hd/station2 \
 derf-hd/sunflower \
 derf-hd/tractor \
 )
-# derf/bus_mono \
-# derf/foreman_mono \
-# derf/football_mono \
-# derf/tennis_mono \
-# derf/stefan_mono \
 
 # seq folder
 #sf='/mnt/nas-pf/'
@@ -42,33 +39,37 @@ do
 	# randomly draw noise level and parameters
 
 	# noise level
-	r=$(awk -v M=2 -v s=$RANDOM 'BEGIN{srand(s); print int(rand()*(M+1))}')
+	r=$(awk -v M=2 -v s=$RANDOM 'BEGIN{srand(s); print int(rand()*M)}')
 	s=${sigmas[$r]}
 
 	# patch size
-#	r=$(awk -v M=2 -v s=$RANDOM 'BEGIN{srand(s); print int(rand()*(M+1))}')
-#	p=${pszs[$r]}
+	r=$(awk -v M=2 -v s=$RANDOM 'BEGIN{srand(s); print int(rand()*M)}')
+	px=${pxs[$r]}
+	pt=${pts[$r]}
 
 	# search region
-#	r=$(awk -v M=2 -v s=$RANDOM 'BEGIN{srand(s); print int(rand()*(M+1))}')
-#	w=${wszs[$r]}
-
-	p=8
-	w=10
+	r=$(awk -v M=4 -v s=$RANDOM 'BEGIN{srand(s); print int(rand()*M)}')
+	wx=${wxs[$r]}
+	wt=${wts[$r]}
 
 	# spatial and temporal weights
-	dth=$(awk -v M=60 -v S=0 -v s=$RANDOM 'BEGIN{srand(s); print rand()*(M - S) + S}')
-	bx=$(awk -v M=8 -v s=$RANDOM 'BEGIN{srand(s); print rand()*M}')
-	bt=$(awk -v S=2 -v M=12 -v s=$RANDOM 'BEGIN{srand(s); print rand()*(M - S) + S}')
-	lambda=$(awk -v s=$RANDOM 'BEGIN{srand(s); print rand()}')
+	dth=$(awk -v M=60 -v S=20 -v s=$RANDOM 'BEGIN{srand(s); print rand()*(M - S) + S}')
+	bx=$(awk -v M=6 -v s=$RANDOM 'BEGIN{srand(s); print rand()*M}')
 
-	echo $s $dth $bx $bt $lambda 
+	# format as string
+	s=$(printf "%02d" $s)
+	px=$(printf "%d" $px)
+	pt=$(printf "%d" $pt)
+	wx=$(printf "%d" $wx)
+	wt=$(printf "%d" $wt)
+	dth=$(printf "%04.1f" $dth)
+	bx=$(printf "%3.1f" $bx)
 
-	trialfolder=$(printf "$output/s%02dp%02dw%02ddth%06.2fbx%4.2fbt%05.2fl%5.3f\n" \
-		$s $p $w $dth $bx $bt $lambda)
+	trialfolder=$(printf "$output/s%sp%sx%sw%sx%sdth%sbx%s\n" \
+		$s $px $pt $wx $wt $dth $bx)
 
-	params=$(printf " -p %d -w %d --dth %06.2f --beta_x %4.2f --beta_t %05.2f --lambda %5.3f" \
-		$p $w $dth $bx $bt $lambda)
+	params=$(printf " -p %s --patch_t %s -w %s --search_t %s --dth %s --beta_x %s" \
+		$px $pt $wx $wt $dth $bx)
 
 	mpsnr=0
 	nseqs=${#seqs[@]}
@@ -84,9 +85,6 @@ do
 		done
 	fi
 	
-	printf "%2d %2d %2d %06.2f %4.2f %05.2f %5.3f %7.4f\n" \
-		$s $p $w $dth $bx $bt $lambda $mpsnr >> $output/table
-
+	printf "$s $px $pt $wx $wt $dth $bx %7.4f\n" $mpsnr >> $output/table
 	rm $trialfolder/*.tif
-
 done
