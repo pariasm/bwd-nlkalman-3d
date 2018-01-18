@@ -886,6 +886,18 @@ int main(int argc, const char *argv[])
 
 		// copy denoised frame f to video
 		memcpy(nisy1, deno1, whc*sizeof(float));
+#define AGGREGATE_FRAMES
+#ifdef  AGGREGATE_FRAMES
+		// aggregate on previous frames
+		for (int ht = 1; ht < min(f-fframe+1, patch_t); ++ht)
+		{
+			float a = 1.f/((float)ht + 1.f);
+			float *n1 = nisy1 - ht*whc;
+			float *d1 = deno1 - ht*whc;
+			for (int i = 0; i < whc; ++i)
+				n1[i] = (1-a) * n1[i] + a * d1[i];
+		}
+#endif
 	}
 
 	// save output [[[2
