@@ -8,11 +8,6 @@
 
 // some macros and data types [[[1
 
-//#define DUMP_INFO
-
-// comment for a simpler version without keeping track of pixel variances
-//#define VARIANCES
-
 // comment for uniform aggregation
 //#define WEIGHTED_AGGREGATION
 
@@ -390,58 +385,48 @@ struct vnlmeans_params
 	int search_sz_x;     // spatial  search window radius
 	int search_sz_t;     // temporal search window radius
 	float dista_th;      // patch distance threshold
-	float dista_lambda;  // weight of current frame in patch distance
 	float beta_x;        // noise multiplier in spatial filtering
-	float beta_t;        // noise multiplier in kalman filtering
-	bool pixelwise;      // toggle pixel-wise nlmeans
 };
 
 // set default parameters as a function of sigma
-void vnlmeans_default_params(struct vnlmeans_params * p, float sigma)
+void vnlmeans_default_params(struct vnlmeans_params * p, float sigma, int patch_sz_t = 1)
 {
-	/* we trained using two different datasets (both grayscale): 
+	/* we trained using the following grayscale dataset:
 	 * - derfhd: videos of half hd resolution obtained by downsampling
 	 *           some hd videos from the derf database
-	 * - derfcif: videos of cif resolution also of the derf db
 	 *
-	 * we found that the optimal parameters differ. in both cases, the relevant
-	 * parameters were the patch distance threshold and the b_t coefficient that
-	 * controls the amount of temporal averaging.
+	 * we used 5 sequences (park_joy, speed_bag, station2, sunflower, tractor)
+	 * from each, we only used subsequences of 16 frames, from frame 70 to 85. 
 	 *
-	 * with the derfhd videos, the distance threshold is lower (i.e. patches
-	 * are required to be at a smallest distance to be considered 'similar',
-	 * and the temporal averaging is higher.
+	 * we considered the following parameters:
+	 * patch sizes 8x8x1 and 6x6x2
+	 * search regions 7x7x4 9x9x3 11x11x2 13x13x1
+	 * distance threshold between 5 and 60
+	 * beta between 0 and 4
 	 *
-	 * the reason for the lowest distance threshold is that the derfhd videos 
-	 * are smoother than the cif ones. in fact, the cif ones are not properly
-	 * sampled and have a considerable amount of aliasing. this high frequencies
-	 * increase the distance between similar patches. 
-	 *
-	 * i don't know which might be the reason for the increase in the temporal 
-	 * averaging factor. perhaps that (a) the optical flow can be better estimated
-	 * (b) there are more homogeneous regions. in the case of (b), even if the oflow
-	 * is not correct, increasing the temporal averaging at these homogeneous regions
-	 * might lead to a global decrease in psnr */
-#define DERFHD_PARAMS
-#ifdef DERFHD_PARAMS
-	if (p->patch_sz_x   < 0) p->patch_sz_x   = 8;  // not tuned
-	if (p->patch_sz_t   < 0) p->patch_sz_t   = 1;  // not tuned
-	if (p->search_sz_x  < 0) p->search_sz_x  = 10; // not tuned
-	if (p->search_sz_t  < 0) p->search_sz_t  = 1;  // not tuned
-	if (p->dista_th     < 0) p->dista_th     = .5*sigma + 15.0;
-	if (p->dista_lambda < 0) p->dista_lambda = 1.0;
-	if (p->beta_x       < 0) p->beta_x       = 3.0;
-	if (p->beta_t       < 0) p->beta_t       = 0.05*sigma + 6.0;
-#else // DERFCIF_PARAMS
-	if (p->patch_sz_x   < 0) p->patch_sz_x   = 8;  // not tuned
-	if (p->patch_sz_t   < 0) p->patch_sz_t   = 1;  // not tuned
-	if (p->search_sz_x  < 0) p->search_sz_x  = 10; // not tuned
-	if (p->search_sz_t  < 0) p->search_sz_t  = 1;  // not tuned
-	if (p->dista_th     < 0) p->dista_th     = (60. - 38.)*(sigma - 10.) + 38.0;
-	if (p->dista_lambda < 0) p->dista_lambda = 1.0;
-	if (p->beta_x       < 0) p->beta_x       = 2.4;
-	if (p->beta_t       < 0) p->beta_t       = 4.5;
-#endif
+	 * the best results were obtained always when more frames were used in the
+	 * search region (7x7x4). also, using a 3d patch gives better results.
+	 * we consider two settings for flat and 3d patches.
+	 */
+	if (p->search_sz_x < 0) p->search_sz_x = 3; // 7x7 spatial search region
+	if (p->search_sz_t < 0) p->search_sz_t = 4;
+
+	if (patch_sz_t == 1 || patch_sz_t < 0)
+	{
+		if (p->patch_sz_x < 0) p->patch_sz_x   = 8;
+		if (p->patch_sz_t < 0) p->patch_sz_t   = 1;
+		if (p->dista_th   < 0) p->dista_th     = (33.-20.2)/20.*(sigma-20.)+20.2;
+		if (p->beta_x     < 0) p->beta_x       = (2.5- 1.9)/30.*(sigma-20.)+ 1.9;
+	}
+	else
+	{
+		if (p->patch_sz_x < 0) p->patch_sz_x   = 6;
+		if (p->patch_sz_t < 0) p->patch_sz_t   = 2;
+		if (p->dista_th   < 0) p->dista_th     = (35.-20.2)/30.*(sigma-10.)+20.2;
+		if (p->beta_x     < 0) p->beta_x       = ( 1.-  .7)/30.*(sigma-10.)+  .7;
+	}
+
+	
 }
 
 // denoise frame t
@@ -452,8 +437,7 @@ void vnlmeans_frame(float *deno1, float *nisy1, float *flow1,
 	// definitions [[[2
 
 	const int psz = prms.patch_sz_x;
-	const int step = prms.pixelwise ? 1 : psz/2;
-//	const int step = prms.pixelwise ? 1 : psz;
+	const int step = psz/2;
 	const float sigma2 = sigma * sigma;
 	const float dista_th2 = prms.dista_th * prms.dista_th;
 	const float beta_x = prms.beta_x;
@@ -466,7 +450,7 @@ void vnlmeans_frame(float *deno1, float *nisy1, float *flow1,
 	 */
 
 	// aggregation weights (not necessary for pixel-wise nlmeans)
-	float *aggr1 = prms.pixelwise ? NULL : malloc(w*h*sizeof(float));
+	float *aggr1 = malloc(w*h*sizeof(float));
 
 	// set output and aggregation weights to 0
 	if (aggr1) for (int i = 0; i < w*h; ++i) aggr1[i] = 0.;
@@ -504,12 +488,6 @@ void vnlmeans_frame(float *deno1, float *nisy1, float *flow1,
 	// statistics
 	float M1 [ch][psz_t][psz][psz]; // average patch at t
 	float V1 [ch][psz_t][psz][psz]; // variance at t
-
-#ifdef DUMP_INFO
-	float *np0image = (float *)malloc(w*h*sizeof(float));
-	float (*np0im)[w] = (void *)np0image;
-	for (int i = 0; i < w*h; i++) np0image[i] = 0.f;
-#endif
 
 	// loop on image patches [[[2
 	const int parallel_step = step * (psz/step);
@@ -707,14 +685,6 @@ void vnlmeans_frame(float *deno1, float *nisy1, float *flow1,
 	for (int c = 0; c < ch ; ++c, ++j) 
 		deno1[j - t*w*h*ch] /= aggr1[i];
 
-#ifdef DUMP_INFO
-	{
-		char name[512];
-		sprintf(name, "occ.%03d.tif", frame);
-		iio_save_image_float_vec(name, np0image, w, h, 1);
-	}
-#endif
-
 	// free allocated mem and quit
 	dct_threads_destroy(dcts);
 	if (aggr1) free(aggr1);
@@ -750,9 +720,6 @@ int main(int argc, const char *argv[])
 	prms.search_sz_t  = -1;
 	prms.dista_th     = -1.;
 	prms.beta_x       = -1.;
-	prms.beta_t       = -1.;
-	prms.dista_lambda = -1.;
-	prms.pixelwise = false;
 
 	// configure command line parser
 	struct argparse_option options[] = {
@@ -771,9 +738,6 @@ int main(int argc, const char *argv[])
 		OPT_INTEGER( 0 , "search_t", &prms.search_sz_t, "temporal search region radius"),
 		OPT_FLOAT  ( 0 , "dth"     , &prms.dista_th, "patch distance threshold"),
 		OPT_FLOAT  ( 0 , "beta_x"  , &prms.beta_x, "noise multiplier in spatial filtering"),
-		OPT_FLOAT  ( 0 , "beta_t"  , &prms.beta_t, "noise multiplier in kalman filtering"),
-		OPT_FLOAT  ( 0 , "lambda"  , &prms.dista_lambda, "noisy patch weight in patch distance"),
-		OPT_BOOLEAN( 0 , "pixel"   , &prms.pixelwise, "toggle pixel-wise denoising"),
 		OPT_GROUP("Program options"),
 		OPT_BOOLEAN('v', "verbose", &verbose, "verbose output"),
 		OPT_END(),
@@ -786,26 +750,20 @@ int main(int argc, const char *argv[])
 	argc = argparse_parse(&argparse, argc, argv);
 
 	// default value for noise-dependent params
-	vnlmeans_default_params(&prms, sigma);
+	vnlmeans_default_params(&prms, sigma, prms.patch_sz_t);
 
 	// print parameters
 	if (verbose)
 	{
 		printf("parameters:\n");
 		printf("\tnoise  %f\n", sigma);
-		printf("\t%s-wise mode\n", prms.pixelwise ? "pixel" : "patch");
 		printf("\tpatch_x   %d\n", prms.patch_sz_x);
 		printf("\tpatch_t   %d\n", prms.patch_sz_t);
 		printf("\tsearch_x  %d\n", prms.search_sz_x);
 		printf("\tsearch_t  %d\n", prms.search_sz_t);
 		printf("\tdth       %g\n", prms.dista_th);
-		printf("\tlambda    %g\n", prms.dista_lambda);
 		printf("\tbeta_x    %g\n", prms.beta_x);
-		printf("\tbeta_t    %g\n", prms.beta_t);
 		printf("\n");
-#ifdef VARIANCES
-		printf("\tVARIANCES ON\n");
-#endif
 #ifdef WEIGHTED_AGGREGATION
 		printf("\tWEIGHTED_AGGREGATION ON\n");
 #endif
@@ -886,6 +844,7 @@ int main(int argc, const char *argv[])
 
 		// copy denoised frame f to video
 		memcpy(nisy1, deno1, whc*sizeof(float));
+
 #define AGGREGATE_FRAMES
 #ifdef  AGGREGATE_FRAMES
 		// aggregate on previous frames
