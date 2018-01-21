@@ -2,7 +2,7 @@
 # Tune the algorithm's parameters
 
 # noise levels
-sigmas=(10 20 40 30)
+sigmas=(10 20 40 40)
 
 # fixed parameters
 pxs=(8 6)
@@ -39,7 +39,7 @@ do
 	# randomly draw noise level and parameters
 
 	# noise level
-	r=$(awk -v M=2 -v s=$RANDOM 'BEGIN{srand(s); print int(rand()*M)}')
+	r=$(awk -v M=4 -v s=$RANDOM 'BEGIN{srand(s); print int(rand()*M)}')
 	s=${sigmas[$r]}
 
 	# patch size
@@ -48,13 +48,15 @@ do
 	pt=${pts[$r]}
 
 	# search region
-	r=$(awk -v M=4 -v s=$RANDOM 'BEGIN{srand(s); print int(rand()*M)}')
-	wx=${wxs[$r]}
-	wt=${wts[$r]}
+#	r=$(awk -v M=3 -v s=$RANDOM 'BEGIN{srand(s); print int(rand()*M)}')
+#	wx=${wxs[$r]}
+#	wt=${wts[$r]}
+	wx=3
+	wt=4
 
 	# spatial and temporal weights
-	dth=$(awk -v M=60 -v S=20 -v s=$RANDOM 'BEGIN{srand(s); print rand()*(M - S) + S}')
-	bx=$(awk -v M=6 -v s=$RANDOM 'BEGIN{srand(s); print rand()*M}')
+	dth=$(awk -v M=60 -v S=5 -v s=$RANDOM 'BEGIN{srand(s); print rand()*(M - S) + S}')
+	bx=$(awk -v M=4 -v s=$RANDOM 'BEGIN{srand(s); print rand()*M}')
 
 	# format as string
 	s=$(printf "%02d" $s)
