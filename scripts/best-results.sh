@@ -13,11 +13,6 @@ derf-hd/station2 \
 derf-hd/sunflower \
 derf-hd/tractor \
 )
-#derf/stefan_mono \
-#derf/tennis_mono \
-#derf/foreman_mono \
-#derf/bus_mono \
-#derf/football_mono \
 
 # seq folder
 sf='/home/pariasm/Remote/lime/denoising/data/'
@@ -30,18 +25,28 @@ f1=85
 function run_rnlm {
 
 	s="$1"
-	p="$2"
-	w="$3"
+	px="$2"
+	pt="$3"
 	dth="$4"
 	bx="$5"
-	bt="$6"
-	lambda="$7"
+	wx=3
+	wt=4
 
-	trialfolder=$(printf "s%02dp%02dw%02ddth%06.2fbx%4.2fbt%05.2fl%5.3f\n" \
-		$s $p $w $dth $bx $bt $lambda)
-	params=$(printf " -p %d -w %d --dth %06.2f --beta_x %4.2f --beta_t %05.2f --lambda %5.3f" \
-		$p $w $dth $bx $bt $lambda)
-	
+	# format as string
+	s=$(printf "%02d" $s)
+	px=$(printf "%d" $px)
+	pt=$(printf "%d" $pt)
+	wx=$(printf "%d" $wx)
+	wt=$(printf "%d" $wt)
+	dth=$(printf "%04.1f" $dth)
+	bx=$(printf "%3.1f" $bx)
+
+	trialfolder=$(printf "s%sp%sx%sw%sx%sdth%sbx%s\n" \
+		$s $px $pt $wx $wt $dth $bx)
+
+	params=$(printf " -p %s --patch_t %s -w %s --search_t %s --dth %s --beta_x %s" \
+		$px $pt $wx $wt $dth $bx)
+
 	nseqs=${#seqs[@]}
 	for seq in ${seqs[@]}
 	do
@@ -52,9 +57,13 @@ function run_rnlm {
 }
 
 # run with optimal parameters
-run_rnlm 10 8 10 38.0 1.2 4.5 1.0 
-run_rnlm 20 8 10 45.0 1.2 4.5 1.0 
-run_rnlm 40 8 10 60.0 1.2 4.5 1.0 
+run_rnlm 10 8 1 13.9 1.6
+run_rnlm 20 8 1 18.7 1.9
+run_rnlm 40 8 1 28.2 2.5
+
+run_rnlm 10 6 2 20.2 0.7
+run_rnlm 20 6 2 25.1 0.8
+run_rnlm 40 6 2 35.0 1.0
 
 # run varying the optimal parameters
 #                                   #       bus_mono    football_mono

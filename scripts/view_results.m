@@ -1,67 +1,57 @@
-load rnlm.vari.table
-rnlm = rnlm_vari;
+load table
 
-s = 10;
+for s = [20],
+	
+	t = table;
+	t = t(find(t(:,1) == s & t(:,3) == 1),:);
+	t = t(:,5:end);
 
-% each row of the table has
-% sigma psz wsz whx wht whvt lambda psnr
+	ipsnr = 4;
+	
+	% find best parameters
+	[psnr_max,imax] = max(t(:,ipsnr));
+	best_prms = t(find(t(:,ipsnr) > psnr_max - 0.05*s),:);
+	best_prms_ave = mean(best_prms);
+	best_prms_std =  std(best_prms);
+	
+	disp('best parameters (wt, np, bx, psnr-deno)')
+	best = sortrows(best_prms,-ipsnr);
+	disp(best)
+	
+	disp('average and std. dev')
+	disp(best_prms_ave)
+	disp(best_prms_std)
+end
+
+%idx = find(t(:,2) <= 1.2 & t(:,2) >= 0.9 & t(:,4) >= 1.0 & t(:,4) < 1.5);
+%t = t(idx,:);
+%t = sortrows(t,-ipsnr);
+%t1 = t;
+%t1(idx,:) = [];
+%plot3(t1(:,1),t1(:,3),t1(:,5),'r.'), hold on
+%plot3(t(:,1),t(:,3),t(:,5),'b.'), hold off
+figure(1)
+scatter3(t(:,2),t(:,3),t(:,4),40,t(:,1),'filled'), hold on
+hidden
+hold off
+
+xlabel('n'), ylabel('b'), box on
+zlim([psnr_max-2.0 psnr_max+.5])
+axis vis3d
+view(90,0) % psnr vs bt
+
+% optimal parameters
 %
-% out of these, psz, wsz and whvt are constant
+% FLAT PATCH 8x8x1 - LONGEST SEARCH REGION 7x7x4
+%    dth beta
+% 10 15.8 1.5 13.1 1.7
+% 20 18.7 1.9 20.2 2.2 20.5 2
+% 40 33   2.5
 
-t = rnlm(find(rnlm(:,1) == s),[4,5,7,8]);
-
-hxg = 4*s*s*[0:.01:1];
-htg = 4*s*s*[0:.01:1];
-lg  = [0:.05:1];
-[hx,ht,l] = ndgrid(hxg, htg, lg);
-
-if ~exist('P'),
-	disp('computing matrix P ...')
-	P = reshape(griddatan(t(:,1:3), t(:,4), [hx(:), ht(:), l(:)], 'linear' ), size(hx));
-else
-	disp('P already computed ... omitting computation')
-end
-
-mm = min(P(:));
-MM = max(P(:));
-%mm = MM-2;
-for il = 2:length(lg)-1
-	imagesc(hxg, htg, P(:,:,il),[mm MM]),
-	axis equal
-	axis tight
-	colorbar
-	title(sprintf('lambda = %f',lg(il)))
-	pause,
-end
-
-%% % best results for sigma = 10
-%% b_hx = hxg(18);
-%% b_ht = htg(57);
-%% b_l  =  lg(18);
-%% 
-%% % best results for sigma = 20
-%% b_ht = 976;
-%% b_hx = 304;
-%% b_l  = .95;
-%% 
-%% % best results for sigma = 40
-%% b_ht = 2496;
-%% b_hx = 1280;
-%% b_l  = .95;
-%% 
-%% disp('best values:');
-%% disp([b_hx b_ht b_l]);
-%% 
-%% % show table values with similar parameters
-%% t(:,1:2) = sqrt(t(:,1:2));
-%% disp(t(find((abs(t(:,1) - sqrt(b_hx)) < 5) & ...
-%%             (abs(t(:,2) - sqrt(b_ht)) < 5) & ...
-%%             (abs(t(:,3) - b_l ) < .3)),:))
+% FLAT PATCH 6x6x2 - LONGEST SEARCH REGION 7x7x4
+%    dth beta
+% 10 20.2 0.7
+% 20 23.5 0.8
+% 40 35.0 1.0
 
 
-
-% best parameters
-%                hx   ht    l   psnr
-% sigma = 10 |   68  224  .85   32.5
-% sigma = 20 |  304  976  1.0   28.3 
-% sigma = 40 | 1608 2995  1.0   24.5
